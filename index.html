@@ -126,6 +126,28 @@ window._doReset = async () => {
     err.textContent = 'E-mail de redefinição enviado!';
   } catch(e) { err.textContent = 'Erro ao enviar e-mail.'; }
 };
+
+window._doReset_email = async (email) => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    // toast é do escopo global, chama via timeout
+    setTimeout(()=> toast(`E-mail enviado para ${email}! 📧`), 300);
+  } catch(e) {
+    setTimeout(()=> toast('Erro ao enviar e-mail: ' + e.message, 'var(--red)'), 300);
+  }
+};
+/*
+```
+
+---
+
+## Fluxo completo para o admin
+```
+1. Cadastra obreiro no sistema → preenche nome, e-mail, função, ministérios
+2. Clica Salvar → sistema pergunta se quer enviar e-mail de acesso
+3. Clica OK → pessoa recebe e-mail para criar a senha
+4. Pessoa abre o e-mail → clica no link → cria a senha → já entra no sistema
+*/
 </script>
 
 <style>
@@ -580,9 +602,30 @@ function toggleItem(el){
   const inp = el.querySelector('input');
   if(inp) inp.checked = el.classList.contains('selected');
 }
-async function saveEscala(){ const cid=document.getElementById('eCulto').value,culto=getC(cid);if(!culto)return; const ed={...state.escala[cid]}; (culto.ministerios||[]).forEach(mid=>{if(!canEditMin(mid))return;const g=document.getElementById('esc_'+mid);if(!g)return;ed[mid]=[...g.querySelectorAll('input:checked')].map(i=>i.value);}); await FS.setDoc(FS.doc(FS.db,'escala',cid),ed); closeModal('modalEscala'); const ov=getOverloaded(); ov.length?toast(`⚠️ ${ov.length} obreiro(s) sem descanso!`,'var(--orange)'):toast('Escala salva! ✅'); }
+async function saveEscala(){ const cid=document.getElementById('eCulto').value,culto=getC(cid);if(!culto)return; const ed={...state.escala[cid]}; (culto.ministerios||[]).forEach(mid=>{if(!canEditMin(mid))return;const g=document.getElementById('esc_'+mid);if(!g)return;
+//ed[mid]=[...g.querySelectorAll('input:checked')].map(i=>i.value);
+ed[mid]=[...g.querySelectorAll('.checkbox-item.selected')].map(el=>el.dataset.id);
+}); await FS.setDoc(FS.doc(FS.db,'escala',cid),ed); closeModal('modalEscala'); const ov=getOverloaded(); ov.length?toast(`⚠️ ${ov.length} obreiro(s) sem descanso!`,'var(--orange)'):toast('Escala salva! ✅'); }
+
+
+
 function openModalEscala(){ if(!window._user||window._user.role==='obreiro'){toast('Sem permissão.','var(--red)');return;} populateCultosSelect(); loadEscalaEdit(); openModal('modalEscala'); }
-function canEditMin(mid){ const r=window._user?.role; if(r==='admin')return true; if(r==='lider'){const m=getMin(mid);return m&&m.lider===window._uid;} return false; }
+//function canEditMin(mid){ const r=window._user?.role; if(r==='admin')return true; if(r==='lider'){const m=getMin(mid);return m&&m.lider===window._uid;} return false; }
+//correção para lider ver os obreiros que lidera
+function canEditMin(mid){
+  const r = window._user?.role;
+  if(r === 'admin') return true;
+  if(r === 'lider'){
+    const min = getMin(mid);
+    if(!min) return false;
+    // Compara pelo memberId do usuário logado (ID na coleção membros)
+    const myMemberId = window._user?.memberId || window._user?.membroId || '';
+    return min.lider === myMemberId || min.lider === window._uid;
+  }
+  return false;
+}
+
+
 
 // ══ MEMBROS ══
 function renderMembros(){ const q=(document.getElementById('searchMembro')?.value||'').toLowerCase(),isAdmin=window._user?.role==='admin',ovIds=new Set(getOverloaded().map(o=>o.membro.id)); document.getElementById('membrosBody').innerHTML=state.membros.filter(m=>m.nome?.toLowerCase().includes(q)).map(m=>{const ms=(m.ministerios||[]).map(mid=>{const min=getMin(mid);return min?`<span class="badge badge-gold">${min.icone||''} ${min.nome}</span>`:''}).join(' ');const fb={admin:'badge-purple',lider:'badge-blue',obreiro:'badge-muted'}[m.funcao]||'badge-muted',fl={admin:'Administrador',lider:'Líder',obreiro:'Obreiro'}[m.funcao]||m.funcao;return`<tr><td><div class="member-name"><div class="member-avatar ${avColor(m.id)}">${initials(m.nome)}</div>${m.nome}${ovIds.has(m.id)?' <span style="color:var(--orange);" title="Sem descanso">⚠️</span>':''}</div></td><td style="color:var(--text-muted);">${m.tel||'—'}</td><td>${ms||'<span style="color:var(--text-dim);">Nenhum</span>'}</td><td><span class="badge ${fb}">${fl}</span></td><td><span class="badge ${m.ativo?'badge-green':'badge-red'}">${m.ativo?'Ativo':'Inativo'}</span></td><td style="display:flex;gap:4px;">${isAdmin?`<button class="btn btn-ghost btn-sm" onclick="openEditMembro('${m.id}')">✏️</button><button class="btn btn-danger btn-sm" onclick="removeMembro('${m.id}')">🗑</button>`:''}</td></tr>`;}).join(''); }
@@ -634,13 +677,19 @@ async function saveMembro(){
   }
 
   closeModal('modalMembro');
+  // Após salvar, oferece enviar e-mail de acesso
+if(email && !state.editingId){
+  if(confirm(`Deseja enviar e-mail de redefinição de senha para ${email}?\n\nA pessoa receberá um link para criar a própria senha.`)){
+    window._doReset_email(email);
+  }
+}
 }
 async function removeMembro(id){ if(!confirm('Remover?'))return; await FS.deleteDoc(FS.doc(FS.db,'membros',id)); toast('Obreiro removido.'); }
 
 // ══ CHECKBOX HELPER ══
 //function populateCheckbox(containerId, items, selected){ const el=document.getElementById(containerId); if(!items.length){el.innerHTML='<span style="color:var(--text-dim);font-size:13px;">Cadastre ministérios primeiro.</span>';return;} el.innerHTML=items.map(item=>`<label class="checkbox-item ${selected.includes(item.id)?'selected':''}" data-id="${item.id}" onclick="toggleItem(this)"><input type="checkbox" value="${item.id}" ${selected.includes(item.id)?'checked':''}>${item.icone||'⛪'} ${item.nome}</label>`).join(''); }
 //Alteração do checkbox de ministerios no cadastro de obreiros para corrigir erro de seleção do ministério e permitir desmarcar o item clicando no label
-function populateCheckbox(containerId, items, selected){
+/*function populateCheckbox(containerId, items, selected){
   const el = document.getElementById(containerId);
   if(!items.length){
     el.innerHTML = '<span style="color:var(--text-dim);font-size:13px;">Cadastre ministérios primeiro.</span>';
@@ -659,6 +708,23 @@ function populateCheckbox(containerId, items, selected){
       this.classList.toggle('selected');
       const inp = this.querySelector('input');
       if(inp) inp.checked = this.classList.contains('selected');
+    });
+  });
+}*/
+function populateCheckbox(containerId, items, selected){
+  const el = document.getElementById(containerId);
+  if(!items.length){
+    el.innerHTML = '<span style="color:var(--text-dim);font-size:13px;">Cadastre ministérios primeiro.</span>';
+    return;
+  }
+  el.innerHTML = items.map(item => `
+    <div class="checkbox-item ${selected.includes(item.id) ? 'selected' : ''}" data-id="${item.id}">
+      ${item.icone || '⛪'} ${item.nome}
+    </div>`).join('');
+
+  el.querySelectorAll('.checkbox-item').forEach(div => {
+    div.addEventListener('click', function(){
+      this.classList.toggle('selected');
     });
   });
 }
