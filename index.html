@@ -1172,7 +1172,7 @@ if('serviceWorker' in navigator){
 
 // ── Firebase not configured fallback: show demo mode ──
 // If Firebase config keys are placeholder, skip auth and go straight to demo
-window.addEventListener('load', () => {
+/*window.addEventListener('load', () => {
   setTimeout(() => {
     const cfg = document.querySelector('script[type="module"]')?.textContent || '';
     const isDemo = cfg.includes('COLE_SEU_API_KEY_AQUI');
@@ -1183,7 +1183,18 @@ window.addEventListener('load', () => {
     }
     // If Firebase IS configured, onAuthStateChanged handles everything
   }, 1200);
+});*/
+// ── Timeout de segurança — evita loading infinito ──
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    // Se após 5 segundos ainda estiver na tela de loading, força o login
+    if (document.getElementById('loadingScreen').style.display !== 'none') {
+      showLogin();
+    }
+  }, 5000);
 });
+
+
 </script>
 </body>
 </html>
