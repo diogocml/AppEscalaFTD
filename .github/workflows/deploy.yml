@@ -10,10 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Deploy para Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_TOKEN }}
-          channelId: live
-          projectId: escalaigreja-1aa79
+          node-version: '18'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase Hosting
+        run: firebase deploy --only hosting --token "$FIREBASE_TOKEN" --project "$FIREBASE_PROJECT"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
