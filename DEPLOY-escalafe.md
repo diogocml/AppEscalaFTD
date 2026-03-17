@@ -148,7 +148,7 @@ firebase deploy --only hosting
 ```
 
 Após o deploy, seu app estará em:
-👉 `https://SEU-PROJETO.web.app`
+👉 `https://escalaigreja-1aa79.web.app`
 
 ---
 
