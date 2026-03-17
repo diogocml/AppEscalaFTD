@@ -38,7 +38,7 @@ const db   = getFirestore(app);
 
 window.FS = { db, doc, getDoc, setDoc, addDoc, deleteDoc, collection, onSnapshot, serverTimestamp };
 
-onAuthStateChanged(auth, async (user) => {
+/*onAuthStateChanged(auth, async (user) => {
   clearTimeout(window._loadTimeout);
   if (user) {
     try {
@@ -48,6 +48,45 @@ onAuthStateChanged(auth, async (user) => {
       window._user = { uid: user.uid, email: user.email, ...perfil };
       showApp();
     } catch(e) { showLogin('Erro ao carregar perfil: ' + e.message); }
+  } else {
+    window._uid = null; window._user = null; showLogin();
+  }
+});*/
+
+onAuthStateChanged(auth, async (user) => {
+  clearTimeout(window._loadTimeout);
+  if (user) {
+    try {
+      // 1. Tenta buscar perfil pelo UID (usuário já logou antes)
+      let snap = await getDoc(doc(db, 'usuarios', user.uid));
+
+      // 2. Se não encontrou, busca pelo e-mail na coleção 'acessos'
+      if (!snap.exists()) {
+        const emailKey = user.email.replace(/\./g,'_').replace(/@/g,'-');
+        const acessoSnap = await getDoc(doc(db, 'acessos', emailKey));
+        if (acessoSnap.exists()) {
+          const acesso = acessoSnap.data();
+          // Salva definitivamente pelo UID para próximos logins
+          await setDoc(doc(db, 'usuarios', user.uid), {
+            nome:      acesso.nome,
+            role:      acesso.role,
+            email:     user.email,
+            membroId:  acesso.membroId || '',
+          });
+          snap = await getDoc(doc(db, 'usuarios', user.uid));
+        }
+      }
+
+      const perfil = snap.exists()
+        ? snap.data()
+        : { role:'obreiro', nome: user.displayName || user.email };
+
+      window._uid  = user.uid;
+      window._user = { uid: user.uid, email: user.email, ...perfil };
+      showApp();
+    } catch(e) {
+      showLogin('Erro ao carregar perfil: ' + e.message);
+    }
   } else {
     window._uid = null; window._user = null; showLogin();
   }
@@ -549,7 +588,53 @@ function canEditMin(mid){ const r=window._user?.role; if(r==='admin')return true
 function renderMembros(){ const q=(document.getElementById('searchMembro')?.value||'').toLowerCase(),isAdmin=window._user?.role==='admin',ovIds=new Set(getOverloaded().map(o=>o.membro.id)); document.getElementById('membrosBody').innerHTML=state.membros.filter(m=>m.nome?.toLowerCase().includes(q)).map(m=>{const ms=(m.ministerios||[]).map(mid=>{const min=getMin(mid);return min?`<span class="badge badge-gold">${min.icone||''} ${min.nome}</span>`:''}).join(' ');const fb={admin:'badge-purple',lider:'badge-blue',obreiro:'badge-muted'}[m.funcao]||'badge-muted',fl={admin:'Administrador',lider:'Líder',obreiro:'Obreiro'}[m.funcao]||m.funcao;return`<tr><td><div class="member-name"><div class="member-avatar ${avColor(m.id)}">${initials(m.nome)}</div>${m.nome}${ovIds.has(m.id)?' <span style="color:var(--orange);" title="Sem descanso">⚠️</span>':''}</div></td><td style="color:var(--text-muted);">${m.tel||'—'}</td><td>${ms||'<span style="color:var(--text-dim);">Nenhum</span>'}</td><td><span class="badge ${fb}">${fl}</span></td><td><span class="badge ${m.ativo?'badge-green':'badge-red'}">${m.ativo?'Ativo':'Inativo'}</span></td><td style="display:flex;gap:4px;">${isAdmin?`<button class="btn btn-ghost btn-sm" onclick="openEditMembro('${m.id}')">✏️</button><button class="btn btn-danger btn-sm" onclick="removeMembro('${m.id}')">🗑</button>`:''}</td></tr>`;}).join(''); }
 function openNewMembro(){ state.editingId=null; document.getElementById('modalMembroTitle').textContent='➕ Novo Obreiro'; document.getElementById('btnSalvarMembro').textContent='Salvar'; ['mNome','mTel','mEmail'].forEach(id=>document.getElementById(id).value=''); document.getElementById('mFuncao').value='obreiro'; document.getElementById('mAtivo').value='true'; populateCheckbox('mMinisterios',state.ministerios,[]); openModal('modalMembro'); }
 function openEditMembro(id){ const m=getM(id);if(!m)return; state.editingId=id; document.getElementById('modalMembroTitle').textContent='✏️ Editar Obreiro'; document.getElementById('btnSalvarMembro').textContent='Atualizar'; document.getElementById('mNome').value=m.nome||''; document.getElementById('mTel').value=m.tel||''; document.getElementById('mEmail').value=m.email||''; document.getElementById('mFuncao').value=m.funcao||'obreiro'; document.getElementById('mAtivo').value=String(m.ativo!==false); populateCheckbox('mMinisterios',state.ministerios,m.ministerios||[]); openModal('modalMembro'); }
-async function saveMembro(){ const nm=document.getElementById('mNome').value.trim();if(!nm){toast('Informe o nome.','var(--red)');return;} const ms=[...document.getElementById('mMinisterios').querySelectorAll('.checkbox-item.selected')].map(el=>el.dataset.id); const p={nome:nm,tel:document.getElementById('mTel').value.trim(),email:document.getElementById('mEmail').value.trim(),funcao:document.getElementById('mFuncao').value,ministerios:ms,ativo:document.getElementById('mAtivo').value==='true',updatedAt:FS.serverTimestamp()}; if(state.editingId){await FS.setDoc(FS.doc(FS.db,'membros',state.editingId),p,{merge:true});toast('Obreiro atualizado! 🙏');}else{p.createdAt=FS.serverTimestamp();await FS.addDoc(FS.collection(FS.db,'membros'),p);toast('Obreiro cadastrado! 🙏');} closeModal('modalMembro'); }
+//async function saveMembro(){ const nm=document.getElementById('mNome').value.trim();if(!nm){toast('Informe o nome.','var(--red)');return;} const ms=[...document.getElementById('mMinisterios').querySelectorAll('.checkbox-item.selected')].map(el=>el.dataset.id); const p={nome:nm,tel:document.getElementById('mTel').value.trim(),email:document.getElementById('mEmail').value.trim(),funcao:document.getElementById('mFuncao').value,ministerios:ms,ativo:document.getElementById('mAtivo').value==='true',updatedAt:FS.serverTimestamp()}; if(state.editingId){await FS.setDoc(FS.doc(FS.db,'membros',state.editingId),p,{merge:true});toast('Obreiro atualizado! 🙏');}else{p.createdAt=FS.serverTimestamp();await FS.addDoc(FS.collection(FS.db,'membros'),p);toast('Obreiro cadastrado! 🙏');} closeModal('modalMembro'); }
+async function saveMembro(){
+  const nm = document.getElementById('mNome').value.trim();
+  if(!nm){ toast('Informe o nome.','var(--red)'); return; }
+
+  const ms    = [...document.getElementById('mMinisterios').querySelectorAll('.checkbox-item.selected')].map(el=>el.dataset.id);
+  const email = document.getElementById('mEmail').value.trim();
+  const funcao= document.getElementById('mFuncao').value;
+  const p = {
+    nome:      nm,
+    tel:       document.getElementById('mTel').value.trim(),
+    email:     email,
+    funcao:    funcao,
+    ministerios: ms,
+    ativo:     document.getElementById('mAtivo').value === 'true',
+    updatedAt: FS.serverTimestamp(),
+  };
+
+  let membroId = state.editingId;
+
+  if(state.editingId){
+    await FS.setDoc(FS.doc(FS.db,'membros',state.editingId), p, {merge:true});
+    toast('Obreiro atualizado! 🙏');
+  } else {
+    p.createdAt = FS.serverTimestamp();
+    const ref = await FS.addDoc(FS.collection(FS.db,'membros'), p);
+    membroId = ref.id;
+    toast('Obreiro cadastrado! 🙏');
+  }
+
+  // Cria/atualiza perfil de acesso no Firestore se tiver e-mail
+  // O admin precisa criar a senha pelo Firebase Console ou pelo reset
+  if(email && membroId){
+    // Busca se já existe um usuário com esse e-mail nos usuarios
+    // Como não temos o UID ainda (só Firebase Auth tem), salvamos por e-mail
+    // e na hora do login ele busca pelo uid — então salvamos em /acessos/{email}
+    // para o onAuthStateChanged encontrar na primeira vez
+    const emailKey = email.replace(/\./g,'_').replace(/@/g,'-');
+    await FS.setDoc(
+      FS.doc(FS.db, 'acessos', emailKey),
+      { nome: nm, role: funcao, email: email, membroId: membroId },
+      { merge: true }
+    );
+  }
+
+  closeModal('modalMembro');
+}
 async function removeMembro(id){ if(!confirm('Remover?'))return; await FS.deleteDoc(FS.doc(FS.db,'membros',id)); toast('Obreiro removido.'); }
 
 // ══ CHECKBOX HELPER ══
